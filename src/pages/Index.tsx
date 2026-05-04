@@ -235,9 +235,11 @@ export default function Index() {
     setAdminLoading(true);
     setAdminErr(null);
     try {
-      const res = await fetch(ADMIN_URL, { headers: { "X-Admin-Key": key } });
+      const res = await fetch(`${ADMIN_URL}?key=${encodeURIComponent(key)}`);
       if (res.status === 403) { setAdminErr("Неверный ключ доступа"); setAdminAuthed(false); return; }
-      const data = await res.json();
+      const raw = await res.json();
+      // бэкенд может вернуть строку или объект
+      const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       setAdminDonations(data.donations || []);
       setAdminAuthed(true);
     } catch {
@@ -252,21 +254,28 @@ export default function Index() {
     try {
       const res = await fetch(ADMIN_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey },
-        body: JSON.stringify({ donation_id: creditForm.id, coins: parseInt(creditForm.coins) || 0, gems: parseInt(creditForm.gems) || 0 }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: adminKey,
+          action: "credit",
+          donation_id: creditForm.id,
+          coins: parseInt(creditForm.coins) || 0,
+          gems: parseInt(creditForm.gems) || 0,
+        }),
       });
-      const data = await res.json();
+      const raw = await res.json();
+      const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       if (data.ok) {
         setCreditMsg(`✅ Баланс пополнен: ${data.username}`);
         setCreditForm(null);
         loadDonations(adminKey);
       } else {
-        setCreditMsg("❌ Ошибка");
+        setCreditMsg(`❌ ${data.error || "Ошибка"}`);
       }
     } catch {
       setCreditMsg("❌ Ошибка соединения");
     }
-    setTimeout(() => setCreditMsg(null), 3000);
+    setTimeout(() => setCreditMsg(null), 3500);
   };
 
   const filteredItems = SHOP_ITEMS.filter(i => shopFilter === "all" ? true : i.type === shopFilter);
@@ -1021,37 +1030,83 @@ export default function Index() {
                   </div>
                 )}
 
+                {/* Stats bar */}
+                {(() => {
+                  const pending = adminDonations.filter(d => d.status === "pending");
+                  const credited = adminDonations.filter(d => d.status === "credited");
+                  const totalPending = pending.reduce((s, d) => s + d.amount, 0);
+                  return (
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="stat-block rounded-sm text-center">
+                        <div className="font-oswald text-xl font-bold text-orange-400">{pending.length}</div>
+                        <div className="font-rajdhani text-[10px] text-[var(--muted-foreground)] uppercase tracking-wider mt-1">⏳ Ожидают</div>
+                      </div>
+                      <div className="stat-block rounded-sm text-center">
+                        <div className="font-oswald text-xl font-bold text-yellow-300">{totalPending} ₽</div>
+                        <div className="font-rajdhani text-[10px] text-[var(--muted-foreground)] uppercase tracking-wider mt-1">💰 Сумма</div>
+                      </div>
+                      <div className="stat-block rounded-sm text-center">
+                        <div className="font-oswald text-xl font-bold text-green-400">{credited.length}</div>
+                        <div className="font-rajdhani text-[10px] text-[var(--muted-foreground)] uppercase tracking-wider mt-1">✅ Начислено</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="flex items-center justify-between">
-                  <div className="font-rajdhani text-xs uppercase tracking-widest neon-text-cyan">Заявки на пополнение</div>
+                  <div className="flex items-center gap-2">
+                    <div className="font-rajdhani text-xs uppercase tracking-widest neon-text-cyan">Заявки на пополнение</div>
+                    {adminDonations.filter(d => d.status === "pending").length > 0 && (
+                      <span className="px-2 py-0.5 rounded-sm bg-orange-500/20 border border-orange-500/40 font-rajdhani text-[10px] font-bold text-orange-400 animate-pulse-glow">
+                        {adminDonations.filter(d => d.status === "pending").length} новых
+                      </span>
+                    )}
+                  </div>
                   <button onClick={() => loadDonations(adminKey)} className="btn-neon text-xs px-3 py-1.5 rounded-sm flex items-center gap-1">
                     <Icon name="RotateCcw" size={12} /> Обновить
                   </button>
                 </div>
 
                 <div className="hud-panel rounded-sm overflow-hidden">
-                  <div className="grid grid-cols-[60px_1fr_80px_90px_90px] gap-2 px-4 py-2 border-b border-[rgba(0,255,229,0.15)] font-rajdhani text-[11px] uppercase tracking-widest text-[var(--muted-foreground)]">
+                  <div className="grid grid-cols-[50px_1fr_70px_100px_100px] gap-2 px-4 py-2 border-b border-[rgba(0,255,229,0.15)] font-rajdhani text-[11px] uppercase tracking-widest text-[var(--muted-foreground)]">
                     <span>ID</span><span>Игрок</span><span>Сумма</span><span>Статус</span><span></span>
                   </div>
                   {adminDonations.length === 0 && (
-                    <div className="px-4 py-8 text-center font-rajdhani text-sm text-[var(--muted-foreground)]">Донатов пока нет</div>
+                    <div className="px-4 py-10 text-center space-y-2">
+                      <div className="text-3xl">📭</div>
+                      <div className="font-rajdhani text-sm text-[var(--muted-foreground)]">Донатов пока нет</div>
+                    </div>
                   )}
                   {adminDonations.map(d => (
-                    <div key={d.id} className={`leader-row grid grid-cols-[60px_1fr_80px_90px_90px] gap-2 px-4 py-3 items-center ${d.status === "credited" ? "opacity-40" : ""}`}>
+                    <div
+                      key={d.id}
+                      className={`leader-row grid grid-cols-[50px_1fr_70px_100px_100px] gap-2 px-4 py-3 items-center transition-all
+                        ${d.status === "credited" ? "opacity-35" : ""}
+                        ${d.status === "pending" ? "border-l-2 border-l-orange-500/50" : ""}
+                      `}
+                    >
                       <span className="font-rajdhani text-xs text-[var(--muted-foreground)]">#{d.id}</span>
                       <div>
                         <div className="font-rajdhani font-bold text-sm neon-text-cyan">{d.username}</div>
-                        <div className="font-rajdhani text-[10px] text-[var(--muted-foreground)]">{new Date(d.created_at).toLocaleString("ru-RU")}</div>
+                        <div className="font-rajdhani text-[10px] text-[var(--muted-foreground)]">
+                          {new Date(d.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </div>
                       </div>
                       <span className="font-oswald font-bold text-sm text-yellow-300">{d.amount} ₽</span>
-                      <span className={`font-rajdhani text-xs font-bold ${d.status === "credited" ? "text-green-400" : "text-orange-400"}`}>
+                      <span className={`font-rajdhani text-xs font-bold ${d.status === "credited" ? "text-green-400" : "text-orange-400 animate-pulse-glow"}`}>
                         {d.status === "credited" ? "✅ Начислен" : "⏳ Ожидает"}
                       </span>
-                      <div>
-                        {d.status !== "credited" && (
-                          <button onClick={() => setCreditForm({ id: d.id, coins: String(d.amount * 2), gems: String(Math.floor(d.amount / 10)) })}
-                            className="btn-neon text-[11px] px-2 py-1 rounded-sm">
-                            Начислить
+                      <div className="flex justify-end">
+                        {d.status !== "credited" ? (
+                          <button
+                            onClick={() => setCreditForm({ id: d.id, coins: String(d.amount * 2), gems: String(Math.floor(d.amount / 10)) })}
+                            className="px-3 py-1.5 rounded-sm border border-orange-400/60 text-orange-300 font-rajdhani font-bold text-[11px] hover:bg-orange-500/15 hover:border-orange-400 transition-all"
+                            style={{ boxShadow: "0 0 8px rgba(255,150,0,0.2)" }}
+                          >
+                            Начислить ✦
                           </button>
+                        ) : (
+                          <span className="font-rajdhani text-[11px] text-green-500/60">Выполнено</span>
                         )}
                       </div>
                     </div>

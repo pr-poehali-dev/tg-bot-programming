@@ -4,21 +4,37 @@ import os
 import psycopg2
 
 SCHEMA = os.environ.get("MAIN_DB_SCHEMA", "t_p46650649_tg_bot_programming")
-ADMIN_SECRET = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "admin")
+ADMIN_SECRET = os.environ.get("TELEGRAM_ADMIN_CHAT_ID", "")
 CORS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, X-Admin-Key",
+    "Access-Control-Allow-Headers": "Content-Type",
 }
+
+
+def check_auth(event: dict) -> bool:
+    """Проверяем ключ из тела запроса (GET — из queryString, POST — из body)."""
+    if not ADMIN_SECRET:
+        return False
+    # GET: ?key=...
+    qs = event.get("queryStringParameters") or {}
+    if qs.get("key") == ADMIN_SECRET:
+        return True
+    # POST: body.key
+    try:
+        body = json.loads(event.get("body") or "{}")
+        if body.get("key") == ADMIN_SECRET:
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def handler(event: dict, context) -> dict:
     if event.get("httpMethod") == "OPTIONS":
         return {"statusCode": 200, "headers": CORS, "body": ""}
 
-    headers = event.get("headers") or {}
-    admin_key = headers.get("X-Admin-Key") or headers.get("x-admin-key") or ""
-    if admin_key != ADMIN_SECRET:
+    if not check_auth(event):
         return {"statusCode": 403, "headers": CORS, "body": json.dumps({"error": "Нет доступа"})}
 
     method = event.get("httpMethod", "GET")
@@ -40,35 +56,43 @@ def handler(event: dict, context) -> dict:
 
     if method == "POST":
         body = json.loads(event.get("body") or "{}")
-        donation_id = int(body.get("donation_id", 0))
-        coins = int(body.get("coins", 0))
-        gems = int(body.get("gems", 0))
+        action = body.get("action", "credit")
 
-        cur.execute(f"SELECT username FROM {SCHEMA}.donations WHERE id = %s", (donation_id,))
-        row = cur.fetchone()
-        if not row:
+        if action == "credit":
+            donation_id = int(body.get("donation_id", 0))
+            coins = int(body.get("coins", 0))
+            gems = int(body.get("gems", 0))
+
+            cur.execute(f"SELECT username, status FROM {SCHEMA}.donations WHERE id = %s", (donation_id,))
+            row = cur.fetchone()
+            if not row:
+                cur.close()
+                conn.close()
+                return {"statusCode": 404, "headers": CORS, "body": json.dumps({"error": "Донат не найден"})}
+
+            username, status = row
+            if status == "credited":
+                cur.close()
+                conn.close()
+                return {"statusCode": 400, "headers": CORS, "body": json.dumps({"error": "Уже начислен"})}
+
+            cur.execute(
+                f"""INSERT INTO {SCHEMA}.player_balances (username, coins, gems)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (username) DO UPDATE
+                    SET coins = player_balances.coins + %s,
+                        gems  = player_balances.gems  + %s,
+                        updated_at = NOW()""",
+                (username, coins, gems, coins, gems),
+            )
+            cur.execute(
+                f"UPDATE {SCHEMA}.donations SET status = 'credited' WHERE id = %s",
+                (donation_id,),
+            )
+            conn.commit()
             cur.close()
             conn.close()
-            return {"statusCode": 404, "headers": CORS, "body": json.dumps({"error": "Донат не найден"})}
-
-        username = row[0]
-        cur.execute(
-            f"""INSERT INTO {SCHEMA}.player_balances (username, coins, gems)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (username) DO UPDATE
-                SET coins = player_balances.coins + %s,
-                    gems  = player_balances.gems  + %s,
-                    updated_at = NOW()""",
-            (username, coins, gems, coins, gems),
-        )
-        cur.execute(
-            f"UPDATE {SCHEMA}.donations SET status = 'credited' WHERE id = %s",
-            (donation_id,),
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        return {"statusCode": 200, "headers": CORS, "body": json.dumps({"ok": True, "username": username})}
+            return {"statusCode": 200, "headers": CORS, "body": json.dumps({"ok": True, "username": username})}
 
     cur.close()
     conn.close()
