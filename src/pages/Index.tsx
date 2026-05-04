@@ -1059,28 +1059,115 @@ export default function Index() {
                 </div>
 
                 {/* Credit modal */}
-                {creditForm && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-                    <div className="hud-panel rounded-sm p-6 w-full max-w-sm space-y-4 mx-4" style={{ boxShadow: "var(--glow-cyan)" }}>
-                      <div className="font-oswald text-lg font-bold neon-text-cyan tracking-wider">Начислить баланс</div>
-                      <div className="font-rajdhani text-sm text-[var(--muted-foreground)]">Донат #{creditForm.id}</div>
-                      <div>
-                        <div className="font-rajdhani text-xs uppercase tracking-widest text-[var(--muted-foreground)] mb-1">Монеты 🪙</div>
-                        <input type="number" value={creditForm.coins} onChange={e => setCreditForm(f => f && ({ ...f, coins: e.target.value }))}
-                          className="w-full bg-[rgba(0,255,229,0.04)] border border-[rgba(0,255,229,0.2)] rounded-sm px-4 py-2 font-rajdhani text-sm neon-text-cyan focus:outline-none focus:border-[var(--neon-cyan)]" />
-                      </div>
-                      <div>
-                        <div className="font-rajdhani text-xs uppercase tracking-widest text-[var(--muted-foreground)] mb-1">Кристаллы 💎</div>
-                        <input type="number" value={creditForm.gems} onChange={e => setCreditForm(f => f && ({ ...f, gems: e.target.value }))}
-                          className="w-full bg-[rgba(0,255,229,0.04)] border border-[rgba(0,255,229,0.2)] rounded-sm px-4 py-2 font-rajdhani text-sm neon-text-cyan focus:outline-none focus:border-[var(--neon-cyan)]" />
-                      </div>
-                      <div className="flex gap-3">
-                        <button onClick={creditBalance} className="flex-1 btn-neon py-2.5 rounded-sm text-sm">✅ Начислить</button>
-                        <button onClick={() => setCreditForm(null)} className="px-4 py-2.5 rounded-sm border border-[rgba(255,255,255,0.1)] text-[var(--muted-foreground)] font-rajdhani text-sm hover:border-[rgba(255,255,255,0.3)] transition-all">Отмена</button>
+                {creditForm && (() => {
+                  const amt = adminDonations.find(d => d.id === creditForm.id)?.amount ?? 0;
+                  const autoCoins = amt * 2;
+                  const autoGems  = Math.floor(amt / 10);
+                  const curCoins  = parseInt(creditForm.coins) || 0;
+                  const curGems   = parseInt(creditForm.gems)  || 0;
+                  const isDefault = curCoins === autoCoins && curGems === autoGems;
+                  return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                      <div className="hud-panel rounded-sm p-6 w-full max-w-md space-y-5 mx-4" style={{ boxShadow: "var(--glow-cyan)" }}>
+
+                        {/* Header */}
+                        <div>
+                          <div className="font-oswald text-lg font-bold neon-text-cyan tracking-wider">Начислить баланс</div>
+                          <div className="font-rajdhani text-xs text-[var(--muted-foreground)]">
+                            {adminDonations.find(d => d.id === creditForm.id)?.username} • Донат #{creditForm.id} • <span className="text-yellow-300 font-bold">{amt} ₽</span>
+                          </div>
+                        </div>
+
+                        {/* Auto-calc preview */}
+                        <div className="rounded-sm p-3 bg-[rgba(0,255,229,0.05)] border border-[rgba(0,255,229,0.15)] space-y-2">
+                          <div className="font-rajdhani text-[11px] uppercase tracking-widest text-[var(--muted-foreground)]">
+                            Авторасчёт по курсу: 1 ₽ = 2 монеты, 10 ₽ = 1 кристалл
+                          </div>
+                          <div className="flex gap-4">
+                            <div className="flex-1 text-center">
+                              <div className="font-oswald text-2xl font-bold text-yellow-300">{autoCoins}</div>
+                              <div className="font-rajdhani text-[10px] text-[var(--muted-foreground)]">🪙 монет</div>
+                            </div>
+                            <div className="w-px bg-[rgba(0,255,229,0.15)]" />
+                            <div className="flex-1 text-center">
+                              <div className="font-oswald text-2xl font-bold text-purple-300">{autoGems}</div>
+                              <div className="font-rajdhani text-[10px] text-[var(--muted-foreground)]">💎 кристаллов</div>
+                            </div>
+                          </div>
+                          {!isDefault && (
+                            <button
+                              onClick={() => setCreditForm(f => f && ({ ...f, coins: String(autoCoins), gems: String(autoGems) }))}
+                              className="w-full text-center font-rajdhani text-[11px] text-[var(--neon-cyan)] hover:underline transition-all"
+                            >
+                              ↩ Сбросить к автоматическому расчёту
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Bonus presets */}
+                        <div>
+                          <div className="font-rajdhani text-[11px] uppercase tracking-widest text-[var(--muted-foreground)] mb-2">Быстрые бонусы</div>
+                          <div className="flex gap-2 flex-wrap">
+                            {[
+                              { label: "Стандарт", coins: autoCoins, gems: autoGems },
+                              { label: "+20% бонус", coins: Math.round(autoCoins * 1.2), gems: Math.round(autoGems * 1.2) },
+                              { label: "+50% бонус", coins: Math.round(autoCoins * 1.5), gems: Math.round(autoGems * 1.5) },
+                              { label: "×2 бонус", coins: autoCoins * 2, gems: autoGems * 2 },
+                            ].map(p => (
+                              <button
+                                key={p.label}
+                                onClick={() => setCreditForm(f => f && ({ ...f, coins: String(p.coins), gems: String(p.gems) }))}
+                                className={`px-3 py-1.5 rounded-sm border font-rajdhani font-bold text-xs transition-all ${curCoins === p.coins && curGems === p.gems ? "border-[var(--neon-cyan)] neon-text-cyan bg-[rgba(0,255,229,0.1)]" : "border-[rgba(0,255,229,0.2)] text-[rgba(0,255,229,0.5)] hover:border-[rgba(0,255,229,0.5)]"}`}
+                              >
+                                {p.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Manual inputs */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <div className="font-rajdhani text-xs uppercase tracking-widest text-[var(--muted-foreground)] mb-1">🪙 Монеты</div>
+                            <input
+                              type="number"
+                              value={creditForm.coins}
+                              onChange={e => setCreditForm(f => f && ({ ...f, coins: e.target.value }))}
+                              className="w-full bg-[rgba(0,255,229,0.04)] border border-[rgba(0,255,229,0.2)] rounded-sm px-3 py-2 font-rajdhani text-sm text-yellow-300 focus:outline-none focus:border-yellow-400"
+                            />
+                          </div>
+                          <div>
+                            <div className="font-rajdhani text-xs uppercase tracking-widest text-[var(--muted-foreground)] mb-1">💎 Кристаллы</div>
+                            <input
+                              type="number"
+                              value={creditForm.gems}
+                              onChange={e => setCreditForm(f => f && ({ ...f, gems: e.target.value }))}
+                              className="w-full bg-[rgba(0,255,229,0.04)] border border-[rgba(0,255,229,0.2)] rounded-sm px-3 py-2 font-rajdhani text-sm text-purple-300 focus:outline-none focus:border-purple-400"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Итог */}
+                        <div className="rounded-sm p-3 bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] flex items-center justify-between">
+                          <div className="font-rajdhani text-xs text-[var(--muted-foreground)] uppercase tracking-wider">Итого начислится:</div>
+                          <div className="flex gap-3 font-oswald font-bold text-sm">
+                            <span className="text-yellow-300">🪙 {curCoins}</span>
+                            <span className="text-purple-300">💎 {curGems}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                          <button onClick={creditBalance} className="flex-1 btn-neon py-2.5 rounded-sm text-sm font-bold" style={{ boxShadow: "var(--glow-cyan)" }}>
+                            ✅ Начислить
+                          </button>
+                          <button onClick={() => setCreditForm(null)} className="px-4 py-2.5 rounded-sm border border-[rgba(255,255,255,0.1)] text-[var(--muted-foreground)] font-rajdhani text-sm hover:border-[rgba(255,255,255,0.3)] transition-all">
+                            Отмена
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </>
             )}
           </div>
