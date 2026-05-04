@@ -64,6 +64,7 @@ export default function Index() {
   const [ownedItems, setOwnedItems] = useState<number[]>([3]);
   const [coins, setCoins] = useState(PLAYER_BASE.coins);
   const [gems, setGems] = useState(PLAYER_BASE.gems);
+  const [dbBalanceLoaded, setDbBalanceLoaded] = useState(false);
   const [playerXp, setPlayerXp] = useState(PLAYER_BASE.xp);
   const [buyMsg, setBuyMsg] = useState<string | null>(null);
   const [activeGame, setActiveGame] = useState<GameId>(null);
@@ -194,8 +195,23 @@ export default function Index() {
   };
 
   // ── DONATE ────────────────────────────────────
-  const DONATE_URL = "https://functions.poehali.dev/0bb236e8-bec0-42fb-bb6a-f72439a1f93a";
-  const ADMIN_URL  = "https://functions.poehali.dev/cbfb0f0c-9f7c-40b8-9919-1d014af3088a";
+  const DONATE_URL   = "https://functions.poehali.dev/0bb236e8-bec0-42fb-bb6a-f72439a1f93a";
+  const ADMIN_URL    = "https://functions.poehali.dev/cbfb0f0c-9f7c-40b8-9919-1d014af3088a";
+  const BALANCE_URL  = "https://functions.poehali.dev/1cac614e-bc0c-4b66-bf4f-81bc388f49eb";
+
+  // Загружаем реальный баланс из БД при старте (прибавляем к базовому только 1 раз)
+  useEffect(() => {
+    if (dbBalanceLoaded) return;
+    fetch(`${BALANCE_URL}?username=${encodeURIComponent(PLAYER_BASE.name)}`)
+      .then(r => r.json())
+      .then(raw => {
+        const d = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (typeof d.coins === "number" && d.coins > 0) setCoins(c => c + d.coins);
+        if (typeof d.gems  === "number" && d.gems  > 0) setGems(g  => g + d.gems);
+        setDbBalanceLoaded(true);
+      })
+      .catch(() => { setDbBalanceLoaded(true); });
+  }, [dbBalanceLoaded]);
 
   const [donateStep, setDonateStep] = useState<"amount" | "details" | "done">("amount");
   const [donateAmount, setDonateAmount] = useState("");
@@ -266,7 +282,14 @@ export default function Index() {
       const raw = await res.json();
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       if (data.ok) {
-        setCreditMsg(`✅ Баланс пополнен: ${data.username}`);
+        const addedCoins = parseInt(creditForm?.coins ?? "0") || 0;
+        const addedGems  = parseInt(creditForm?.gems  ?? "0") || 0;
+        // Обновляем баланс на экране если это наш игрок
+        if (data.username === PLAYER_BASE.name) {
+          setCoins(c => c + addedCoins);
+          setGems(g  => g + addedGems);
+        }
+        setCreditMsg(`✅ Начислено ${data.username}: +${addedCoins} 🪙 +${addedGems} 💎`);
         setCreditForm(null);
         loadDonations(adminKey);
       } else {
