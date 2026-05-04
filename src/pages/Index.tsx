@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Icon from "@/components/ui/icon";
 
 type Tab = "profile" | "shop" | "leaderboard" | "games" | "donate" | "admin";
-type GameId = "reaction" | "guess" | "memory" | null;
+type GameId = "reaction" | "guess" | "memory" | "quiz" | null;
 
 const PLAYER_BASE = {
   name: "GHOST_X",
@@ -50,6 +50,34 @@ const RANK_COLORS: Record<string, string> = {
   common: "text-gray-400",
 };
 
+// ── QUIZ QUESTIONS ────────────────────────────────
+const QUIZ_QUESTIONS = [
+  { q: "Какая планета является четвёртой от Солнца?", options: ["Земля", "Марс", "Юпитер", "Венера"], answer: 1 },
+  { q: "Сколько цветов в радуге?", options: ["5", "6", "7", "8"], answer: 2 },
+  { q: "Какой элемент обозначается символом «O»?", options: ["Золото", "Осмий", "Кислород", "Олово"], answer: 2 },
+  { q: "В каком году Гагарин полетел в космос?", options: ["1957", "1959", "1961", "1963"], answer: 2 },
+  { q: "Сколько сторон у шестиугольника?", options: ["5", "6", "7", "8"], answer: 1 },
+  { q: "Самая длинная река в мире?", options: ["Амазонка", "Нил", "Янцзы", "Миссисипи"], answer: 1 },
+  { q: "Чему равно число Пи (приближённо)?", options: ["2.14", "3.14", "4.14", "3.41"], answer: 1 },
+  { q: "Какое животное является символом Австралии?", options: ["Коала", "Кенгуру", "Ехидна", "Вомбат"], answer: 1 },
+  { q: "Сколько байт в одном килобайте?", options: ["512", "1000", "1024", "2048"], answer: 2 },
+  { q: "Какая страна подарила статую Свободы США?", options: ["Великобритания", "Испания", "Италия", "Франция"], answer: 3 },
+  { q: "Как называется самая маленькая кость в теле человека?", options: ["Стремечко", "Молоточко", "Наковальня", "Копчик"], answer: 0 },
+  { q: "Сколько континентов на Земле?", options: ["5", "6", "7", "8"], answer: 2 },
+  { q: "Какой газ составляет большую часть атмосферы Земли?", options: ["Кислород", "CO2", "Азот", "Аргон"], answer: 2 },
+  { q: "Кто написал «Войну и мир»?", options: ["Достоевский", "Чехов", "Пушкин", "Толстой"], answer: 3 },
+  { q: "Сколько струн у классической гитары?", options: ["4", "5", "6", "7"], answer: 2 },
+  { q: "Какой металл самый лёгкий?", options: ["Алюминий", "Литий", "Магний", "Титан"], answer: 1 },
+  { q: "Столица Японии?", options: ["Осака", "Киото", "Токио", "Хиросима"], answer: 2 },
+  { q: "Скорость света (приближённо) в км/с?", options: ["100 000", "300 000", "500 000", "1 000 000"], answer: 1 },
+  { q: "Сколько карт в стандартной колоде?", options: ["48", "52", "54", "56"], answer: 1 },
+  { q: "Какой орган вырабатывает инсулин?", options: ["Печень", "Почки", "Поджелудочная железа", "Желудок"], answer: 2 },
+];
+
+function shuffleQuiz() {
+  return [...QUIZ_QUESTIONS].sort(() => Math.random() - 0.5).slice(0, 10);
+}
+
 // ── MEMORY CARDS ──────────────────────────────────
 const MEMORY_EMOJIS = ["🔥", "⚡", "💀", "🐉", "👑", "⚔️", "🛡️", "🎯"];
 function shuffleCards() {
@@ -79,6 +107,50 @@ export default function Index() {
   };
 
   const xpPercent = Math.round((playerXp / PLAYER_BASE.xpMax) * 100);
+
+  // ── QUIZ GAME ──────────────────────────────────
+  const [quizQuestions, setQuizQuestions] = useState(() => shuffleQuiz());
+  const [quizIdx, setQuizIdx] = useState(0);
+  const [quizSelected, setQuizSelected] = useState<number | null>(null);
+  const [quizScore, setQuizScore] = useState(0);
+  const [quizCoinsEarned, setQuizCoinsEarned] = useState(0);
+  const [quizGemsEarned, setQuizGemsEarned] = useState(0);
+  const [quizDone, setQuizDone] = useState(false);
+  const [quizAnswered, setQuizAnswered] = useState(false);
+
+  const quizAnswer = (idx: number) => {
+    if (quizAnswered) return;
+    setQuizSelected(idx);
+    setQuizAnswered(true);
+    const correct = idx === quizQuestions[quizIdx].answer;
+    if (correct) {
+      setQuizScore(s => s + 1);
+      setQuizCoinsEarned(c => c + 2);
+      setQuizGemsEarned(g => g + 1);
+      setCoins(c => c + 2);
+      setGems(g => g + 1);
+    }
+    setTimeout(() => {
+      if (quizIdx + 1 >= quizQuestions.length) {
+        setQuizDone(true);
+      } else {
+        setQuizIdx(i => i + 1);
+        setQuizSelected(null);
+        setQuizAnswered(false);
+      }
+    }, 1200);
+  };
+
+  const resetQuiz = () => {
+    setQuizQuestions(shuffleQuiz());
+    setQuizIdx(0);
+    setQuizSelected(null);
+    setQuizScore(0);
+    setQuizCoinsEarned(0);
+    setQuizGemsEarned(0);
+    setQuizDone(false);
+    setQuizAnswered(false);
+  };
 
   // ── REACTION GAME ──────────────────────────────
   type ReactionState = "idle" | "waiting" | "ready" | "result" | "toosoon";
@@ -492,7 +564,7 @@ export default function Index() {
                   <Icon name="Gamepad2" size={13} />
                   Выбери игру — зарабатывай XP и монеты
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {[
                     {
                       id: "reaction" as GameId,
@@ -523,6 +595,16 @@ export default function Index() {
                       color: "neon-text-cyan",
                       borderColor: "rgba(0,255,229,0.3)",
                       tag: "ПАМЯТЬ",
+                    },
+                    {
+                      id: "quiz" as GameId,
+                      emoji: "❓",
+                      title: "Викторина",
+                      desc: "10 вопросов на общие знания. За каждый правильный ответ — 2 монеты и 1 кристалл!",
+                      reward: "+2🪙 +1💎 за вопрос",
+                      color: "text-green-400",
+                      borderColor: "rgba(0,255,100,0.3)",
+                      tag: "ЗНАНИЯ",
                     },
                   ].map(g => (
                     <button
