@@ -1068,8 +1068,8 @@ export default function Index() {
                 </div>
 
                 <div className="hud-panel rounded-sm overflow-hidden">
-                  <div className="grid grid-cols-[50px_1fr_70px_100px_100px] gap-2 px-4 py-2 border-b border-[rgba(0,255,229,0.15)] font-rajdhani text-[11px] uppercase tracking-widest text-[var(--muted-foreground)]">
-                    <span>ID</span><span>Игрок</span><span>Сумма</span><span>Статус</span><span></span>
+                  <div className="grid grid-cols-[50px_1fr_70px_1fr] gap-2 px-4 py-2 border-b border-[rgba(0,255,229,0.15)] font-rajdhani text-[11px] uppercase tracking-widest text-[var(--muted-foreground)]">
+                    <span>ID</span><span>Игрок</span><span>Сумма</span><span>Статус</span>
                   </div>
                   {adminDonations.length === 0 && (
                     <div className="px-4 py-10 text-center space-y-2">
@@ -1080,7 +1080,7 @@ export default function Index() {
                   {adminDonations.map(d => (
                     <div
                       key={d.id}
-                      className={`leader-row grid grid-cols-[50px_1fr_70px_100px_100px] gap-2 px-4 py-3 items-center transition-all
+                      className={`leader-row grid grid-cols-[50px_1fr_70px_1fr] gap-2 px-4 py-3 items-center transition-all
                         ${d.status === "credited" ? "opacity-35" : ""}
                         ${d.status === "pending" ? "border-l-2 border-l-orange-500/50" : ""}
                       `}
@@ -1093,20 +1093,20 @@ export default function Index() {
                         </div>
                       </div>
                       <span className="font-oswald font-bold text-sm text-yellow-300">{d.amount} ₽</span>
-                      <span className={`font-rajdhani text-xs font-bold ${d.status === "credited" ? "text-green-400" : "text-orange-400 animate-pulse-glow"}`}>
-                        {d.status === "credited" ? "✅ Начислен" : "⏳ Ожидает"}
-                      </span>
-                      <div className="flex justify-end">
+                      <div className="flex items-center gap-2">
                         {d.status !== "credited" ? (
-                          <button
-                            onClick={() => setCreditForm({ id: d.id, coins: String(d.amount * 2), gems: String(Math.floor(d.amount / 10)) })}
-                            className="px-3 py-1.5 rounded-sm border border-orange-400/60 text-orange-300 font-rajdhani font-bold text-[11px] hover:bg-orange-500/15 hover:border-orange-400 transition-all"
-                            style={{ boxShadow: "0 0 8px rgba(255,150,0,0.2)" }}
-                          >
-                            Начислить ✦
-                          </button>
+                          <>
+                            <span className="font-rajdhani text-xs font-bold text-orange-400 animate-pulse-glow whitespace-nowrap">⏳ Ожидает</span>
+                            <button
+                              onClick={() => setCreditForm({ id: d.id, coins: String(d.amount * 2), gems: String(Math.floor(d.amount / 10)) })}
+                              className="px-2.5 py-1 rounded-sm border border-orange-400/70 text-orange-300 font-rajdhani font-bold text-[11px] hover:bg-orange-500/20 hover:border-orange-400 transition-all whitespace-nowrap"
+                              style={{ boxShadow: "0 0 8px rgba(255,150,0,0.25)" }}
+                            >
+                              Начислить ✦
+                            </button>
+                          </>
                         ) : (
-                          <span className="font-rajdhani text-[11px] text-green-500/60">Выполнено</span>
+                          <span className="font-rajdhani text-xs font-bold text-green-400">✅ Начислен</span>
                         )}
                       </div>
                     </div>
