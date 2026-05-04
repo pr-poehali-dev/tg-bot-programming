@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Получить список донатов (без ключа — 403)",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 403,
+      "expectedBody": {"error": "Нет доступа"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

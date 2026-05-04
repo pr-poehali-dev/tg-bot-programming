@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Icon from "@/components/ui/icon";
 
-type Tab = "profile" | "shop" | "leaderboard" | "games";
+type Tab = "profile" | "shop" | "leaderboard" | "games" | "donate" | "admin";
 type GameId = "reaction" | "guess" | "memory" | null;
 
 const PLAYER_BASE = {
@@ -193,6 +193,82 @@ export default function Index() {
     setMemWon(false);
   };
 
+  // ── DONATE ────────────────────────────────────
+  const DONATE_URL = "https://functions.poehali.dev/0bb236e8-bec0-42fb-bb6a-f72439a1f93a";
+  const ADMIN_URL  = "https://functions.poehali.dev/cbfb0f0c-9f7c-40b8-9919-1d014af3088a";
+
+  const [donateStep, setDonateStep] = useState<"amount" | "details" | "done">("amount");
+  const [donateAmount, setDonateAmount] = useState("");
+  const [donateName, setDonateName] = useState(PLAYER_BASE.name);
+  const [donateSending, setDonateSending] = useState(false);
+  const [donateError, setDonateError] = useState<string | null>(null);
+
+  const submitDonate = async () => {
+    setDonateSending(true);
+    setDonateError(null);
+    try {
+      const res = await fetch(DONATE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: donateName, amount: parseInt(donateAmount) }),
+      });
+      if (res.ok) { setDonateStep("done"); }
+      else { setDonateError("Ошибка отправки. Попробуй снова."); }
+    } catch {
+      setDonateError("Нет соединения. Попробуй снова.");
+    } finally {
+      setDonateSending(false);
+    }
+  };
+
+  // ── ADMIN ────────────────────────────────────
+  type Donation = { id: number; username: string; amount: number; status: string; created_at: string };
+  const [adminKey, setAdminKey] = useState("");
+  const [adminAuthed, setAdminAuthed] = useState(false);
+  const [adminDonations, setAdminDonations] = useState<Donation[]>([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminErr, setAdminErr] = useState<string | null>(null);
+  const [creditForm, setCreditForm] = useState<{ id: number; coins: string; gems: string } | null>(null);
+  const [creditMsg, setCreditMsg] = useState<string | null>(null);
+
+  const loadDonations = async (key: string) => {
+    setAdminLoading(true);
+    setAdminErr(null);
+    try {
+      const res = await fetch(ADMIN_URL, { headers: { "X-Admin-Key": key } });
+      if (res.status === 403) { setAdminErr("Неверный ключ доступа"); setAdminAuthed(false); return; }
+      const data = await res.json();
+      setAdminDonations(data.donations || []);
+      setAdminAuthed(true);
+    } catch {
+      setAdminErr("Ошибка соединения");
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const creditBalance = async () => {
+    if (!creditForm) return;
+    try {
+      const res = await fetch(ADMIN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": adminKey },
+        body: JSON.stringify({ donation_id: creditForm.id, coins: parseInt(creditForm.coins) || 0, gems: parseInt(creditForm.gems) || 0 }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setCreditMsg(`✅ Баланс пополнен: ${data.username}`);
+        setCreditForm(null);
+        loadDonations(adminKey);
+      } else {
+        setCreditMsg("❌ Ошибка");
+      }
+    } catch {
+      setCreditMsg("❌ Ошибка соединения");
+    }
+    setTimeout(() => setCreditMsg(null), 3000);
+  };
+
   const filteredItems = SHOP_ITEMS.filter(i => shopFilter === "all" ? true : i.type === shopFilter);
 
   const handleBuy = (item: typeof SHOP_ITEMS[0]) => {
@@ -268,17 +344,25 @@ export default function Index() {
             { id: "games", label: "Игры", icon: "Gamepad2" },
             { id: "shop", label: "Магазин", icon: "ShoppingBag" },
             { id: "leaderboard", label: "Лидеры", icon: "Trophy" },
+            { id: "donate", label: "Донат", icon: "Heart" },
           ] as { id: Tab; label: string; icon: string }[]).map(t => (
             <button
               key={t.id}
-              onClick={() => { setTab(t.id); setActiveGame(null); }}
-              className={`nav-btn flex items-center gap-2 whitespace-nowrap ${tab === t.id ? "active" : ""}`}
+              onClick={() => { setTab(t.id); setActiveGame(null); if (t.id === "donate") setDonateStep("amount"); }}
+              className={`nav-btn flex items-center gap-2 whitespace-nowrap ${tab === t.id ? "active" : ""} ${t.id === "donate" ? "!text-pink-400 border-b-pink-400" : ""}`}
             >
               <Icon name={t.icon} size={14} />
               {t.label}
               {t.id === "games" && <span className="ml-1 text-[9px] font-rajdhani font-bold px-1.5 py-0.5 rounded-sm bg-[rgba(0,255,229,0.15)] neon-text-cyan border border-[rgba(0,255,229,0.3)]">NEW</span>}
             </button>
           ))}
+          <button
+            onClick={() => { setTab("admin"); setAdminAuthed(false); }}
+            className={`nav-btn flex items-center gap-2 whitespace-nowrap ml-auto opacity-30 hover:opacity-60 ${tab === "admin" ? "active opacity-100" : ""}`}
+          >
+            <Icon name="Settings" size={13} />
+            Адм
+          </button>
         </div>
       </nav>
 
@@ -771,6 +855,237 @@ export default function Index() {
             </div>
           </div>
         )}
+
+        {/* ── DONATE ── */}
+        {tab === "donate" && (
+          <div className="animate-float-up max-w-lg mx-auto space-y-5">
+
+            {/* Step 1: Amount */}
+            {donateStep === "amount" && (
+              <>
+                <div className="text-center space-y-2">
+                  <div className="text-5xl">💖</div>
+                  <div className="font-oswald text-2xl font-bold tracking-widest" style={{ color: "#ff6eb4", textShadow: "0 0 15px rgba(255,110,180,0.6)" }}>ПОДДЕРЖАТЬ ПРОЕКТ</div>
+                  <div className="font-rajdhani text-sm text-[var(--muted-foreground)]">Твой донат конвертируется в монеты и кристаллы на аккаунте</div>
+                </div>
+
+                <div className="hud-panel rounded-sm p-6 space-y-4" style={{ borderColor: "rgba(255,110,180,0.25)" }}>
+                  <div className="font-rajdhani text-xs uppercase tracking-widest text-[var(--muted-foreground)] mb-1">Укажи сумму доната (₽)</div>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {[100, 300, 500, 1000, 2000, 5000].map(v => (
+                      <button key={v} onClick={() => setDonateAmount(String(v))}
+                        className={`px-4 py-1.5 rounded-sm border font-rajdhani font-bold text-sm transition-all ${donateAmount === String(v) ? "border-pink-400 text-pink-300 bg-[rgba(255,110,180,0.1)]" : "border-[rgba(255,110,180,0.25)] text-[rgba(255,110,180,0.6)] hover:border-pink-400"}`}>
+                        {v} ₽
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    value={donateAmount}
+                    onChange={e => setDonateAmount(e.target.value)}
+                    placeholder="Или введи свою сумму"
+                    className="w-full bg-[rgba(255,110,180,0.04)] border border-[rgba(255,110,180,0.25)] rounded-sm px-4 py-2.5 font-rajdhani text-sm text-pink-300 placeholder:text-[var(--muted-foreground)] focus:outline-none focus:border-pink-400"
+                  />
+                  <div className="font-rajdhani text-xs uppercase tracking-widest text-[var(--muted-foreground)]">Твой никнейм</div>
+                  <input
+                    type="text"
+                    value={donateName}
+                    onChange={e => setDonateName(e.target.value)}
+                    placeholder="Имя в игре"
+                    className="w-full bg-[rgba(255,110,180,0.04)] border border-[rgba(255,110,180,0.25)] rounded-sm px-4 py-2.5 font-rajdhani text-sm text-pink-300 placeholder:text-[var(--muted-foreground)] focus:outline-none focus:border-pink-400"
+                  />
+                  {parseInt(donateAmount) > 0 && (
+                    <div className="hud-panel rounded-sm p-3 text-center border-[rgba(255,110,180,0.2)]">
+                      <div className="font-rajdhani text-xs text-[var(--muted-foreground)] mb-1">За {donateAmount} ₽ ты получишь:</div>
+                      <div className="flex justify-center gap-4 font-oswald font-bold">
+                        <span className="text-yellow-300">🪙 {parseInt(donateAmount) * 2} монет</span>
+                        <span className="text-purple-300">💎 {Math.floor(parseInt(donateAmount) / 10)} кристаллов</span>
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    disabled={!parseInt(donateAmount) || parseInt(donateAmount) < 1}
+                    onClick={() => setDonateStep("details")}
+                    className="w-full py-3 rounded-sm font-rajdhani font-bold tracking-widest text-sm transition-all border border-pink-400 text-pink-300 hover:bg-[rgba(255,110,180,0.12)] disabled:opacity-30 disabled:cursor-not-allowed"
+                    style={{ boxShadow: parseInt(donateAmount) > 0 ? "0 0 15px rgba(255,110,180,0.3)" : "none" }}
+                  >
+                    Продолжить →
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Step 2: Реквизиты */}
+            {donateStep === "details" && (
+              <>
+                <div className="text-center space-y-1">
+                  <div className="font-oswald text-2xl font-bold tracking-widest" style={{ color: "#ff6eb4" }}>РЕКВИЗИТЫ</div>
+                  <div className="font-rajdhani text-sm text-[var(--muted-foreground)]">Переведи <span className="text-pink-300 font-bold">{donateAmount} ₽</span> по реквизитам ниже</div>
+                </div>
+
+                <div className="hud-panel rounded-sm p-6 space-y-4" style={{ borderColor: "rgba(255,110,180,0.25)", boxShadow: "0 0 20px rgba(255,110,180,0.1)" }}>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between p-4 rounded-sm bg-[rgba(255,110,180,0.06)] border border-[rgba(255,110,180,0.2)]">
+                      <div>
+                        <div className="font-rajdhani text-[11px] uppercase tracking-widest text-[var(--muted-foreground)]">Банк</div>
+                        <div className="font-oswald text-lg font-bold text-green-400">Сбербанк</div>
+                      </div>
+                      <span className="text-3xl">🏦</span>
+                    </div>
+                    <div className="flex items-center justify-between p-4 rounded-sm bg-[rgba(255,110,180,0.06)] border border-[rgba(255,110,180,0.2)]">
+                      <div>
+                        <div className="font-rajdhani text-[11px] uppercase tracking-widest text-[var(--muted-foreground)]">Номер телефона</div>
+                        <div className="font-oswald text-2xl font-bold text-pink-300 tracking-widest">+7 962 903-15-56</div>
+                      </div>
+                      <button onClick={() => navigator.clipboard.writeText("79629031556")} className="px-3 py-1.5 rounded-sm border border-[rgba(255,110,180,0.3)] text-pink-400 font-rajdhani text-xs hover:bg-[rgba(255,110,180,0.1)] transition-all">
+                        Копировать
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between p-4 rounded-sm bg-[rgba(255,110,180,0.06)] border border-[rgba(255,110,180,0.2)]">
+                      <div>
+                        <div className="font-rajdhani text-[11px] uppercase tracking-widest text-[var(--muted-foreground)]">Сумма перевода</div>
+                        <div className="font-oswald text-2xl font-bold text-yellow-300">{donateAmount} ₽</div>
+                      </div>
+                      <span className="text-3xl">💰</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-sm p-3 bg-[rgba(255,230,0,0.05)] border border-[rgba(255,230,0,0.15)]">
+                    <div className="font-rajdhani text-xs text-yellow-300/80 text-center">
+                      ⚠️ В комментарии к переводу укажи свой никнейм: <span className="font-bold text-yellow-300">{donateName}</span>
+                    </div>
+                  </div>
+
+                  {donateError && <div className="text-center text-red-400 font-rajdhani text-sm">{donateError}</div>}
+
+                  <button
+                    onClick={submitDonate}
+                    disabled={donateSending}
+                    className="w-full py-3 rounded-sm font-rajdhani font-bold tracking-widest text-sm border border-pink-400 text-pink-300 hover:bg-[rgba(255,110,180,0.12)] transition-all disabled:opacity-50"
+                    style={{ boxShadow: "0 0 15px rgba(255,110,180,0.3)" }}
+                  >
+                    {donateSending ? "Отправляем..." : "✅ Я перевёл деньги"}
+                  </button>
+                  <button onClick={() => setDonateStep("amount")} className="w-full text-center font-rajdhani text-xs text-[var(--muted-foreground)] hover:text-pink-300 transition-colors">
+                    ← Назад
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Step 3: Done */}
+            {donateStep === "done" && (
+              <div className="hud-panel rounded-sm p-10 text-center space-y-4" style={{ borderColor: "rgba(255,110,180,0.3)", boxShadow: "0 0 30px rgba(255,110,180,0.15)" }}>
+                <div className="text-6xl">🎉</div>
+                <div className="font-oswald text-3xl font-bold tracking-widest" style={{ color: "#ff6eb4" }}>СПАСИБО!</div>
+                <div className="font-rajdhani text-sm text-[var(--muted-foreground)]">Администратор получил уведомление. После проверки платежа монеты будут добавлены на твой аккаунт <span className="text-pink-300 font-bold">{donateName}</span>.</div>
+                <div className="font-rajdhani text-xs text-[var(--muted-foreground)]">Обычно это занимает до 30 минут</div>
+                <button onClick={() => { setDonateStep("amount"); setDonateAmount(""); }} className="px-8 py-2.5 rounded-sm border border-pink-400 text-pink-300 font-rajdhani font-bold text-sm hover:bg-[rgba(255,110,180,0.1)] transition-all">
+                  Задонатить ещё
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ADMIN ── */}
+        {tab === "admin" && (
+          <div className="animate-float-up space-y-5">
+            <div className="text-center space-y-1">
+              <div className="font-oswald text-xl font-bold neon-text-cyan tracking-widest">⚙️ ПАНЕЛЬ АДМИНИСТРАТОРА</div>
+              <div className="font-rajdhani text-xs text-[var(--muted-foreground)]">Управление донатами и балансами игроков</div>
+            </div>
+
+            {!adminAuthed ? (
+              <div className="hud-panel rounded-sm p-6 max-w-sm mx-auto space-y-4">
+                <div className="font-rajdhani text-xs uppercase tracking-widest text-[var(--muted-foreground)]">Введи ключ доступа (Telegram Chat ID)</div>
+                <input
+                  type="password"
+                  value={adminKey}
+                  onChange={e => setAdminKey(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && loadDonations(adminKey)}
+                  placeholder="Ключ администратора"
+                  className="w-full bg-[rgba(0,255,229,0.04)] border border-[rgba(0,255,229,0.2)] rounded-sm px-4 py-2.5 font-rajdhani text-sm neon-text-cyan placeholder:text-[var(--muted-foreground)] focus:outline-none focus:border-[var(--neon-cyan)]"
+                />
+                {adminErr && <div className="text-red-400 font-rajdhani text-xs">{adminErr}</div>}
+                <button onClick={() => loadDonations(adminKey)} disabled={adminLoading} className="w-full btn-neon py-2.5 rounded-sm text-sm">
+                  {adminLoading ? "Загрузка..." : "Войти"}
+                </button>
+              </div>
+            ) : (
+              <>
+                {creditMsg && (
+                  <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 hud-panel px-6 py-3 font-rajdhani font-bold tracking-wider text-sm neon-text-cyan rounded-sm border border-[rgba(0,255,229,0.5)]" style={{ boxShadow: "var(--glow-cyan)" }}>
+                    {creditMsg}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div className="font-rajdhani text-xs uppercase tracking-widest neon-text-cyan">Заявки на пополнение</div>
+                  <button onClick={() => loadDonations(adminKey)} className="btn-neon text-xs px-3 py-1.5 rounded-sm flex items-center gap-1">
+                    <Icon name="RotateCcw" size={12} /> Обновить
+                  </button>
+                </div>
+
+                <div className="hud-panel rounded-sm overflow-hidden">
+                  <div className="grid grid-cols-[60px_1fr_80px_90px_90px] gap-2 px-4 py-2 border-b border-[rgba(0,255,229,0.15)] font-rajdhani text-[11px] uppercase tracking-widest text-[var(--muted-foreground)]">
+                    <span>ID</span><span>Игрок</span><span>Сумма</span><span>Статус</span><span></span>
+                  </div>
+                  {adminDonations.length === 0 && (
+                    <div className="px-4 py-8 text-center font-rajdhani text-sm text-[var(--muted-foreground)]">Донатов пока нет</div>
+                  )}
+                  {adminDonations.map(d => (
+                    <div key={d.id} className={`leader-row grid grid-cols-[60px_1fr_80px_90px_90px] gap-2 px-4 py-3 items-center ${d.status === "credited" ? "opacity-40" : ""}`}>
+                      <span className="font-rajdhani text-xs text-[var(--muted-foreground)]">#{d.id}</span>
+                      <div>
+                        <div className="font-rajdhani font-bold text-sm neon-text-cyan">{d.username}</div>
+                        <div className="font-rajdhani text-[10px] text-[var(--muted-foreground)]">{new Date(d.created_at).toLocaleString("ru-RU")}</div>
+                      </div>
+                      <span className="font-oswald font-bold text-sm text-yellow-300">{d.amount} ₽</span>
+                      <span className={`font-rajdhani text-xs font-bold ${d.status === "credited" ? "text-green-400" : "text-orange-400"}`}>
+                        {d.status === "credited" ? "✅ Начислен" : "⏳ Ожидает"}
+                      </span>
+                      <div>
+                        {d.status !== "credited" && (
+                          <button onClick={() => setCreditForm({ id: d.id, coins: String(d.amount * 2), gems: String(Math.floor(d.amount / 10)) })}
+                            className="btn-neon text-[11px] px-2 py-1 rounded-sm">
+                            Начислить
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Credit modal */}
+                {creditForm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                    <div className="hud-panel rounded-sm p-6 w-full max-w-sm space-y-4 mx-4" style={{ boxShadow: "var(--glow-cyan)" }}>
+                      <div className="font-oswald text-lg font-bold neon-text-cyan tracking-wider">Начислить баланс</div>
+                      <div className="font-rajdhani text-sm text-[var(--muted-foreground)]">Донат #{creditForm.id}</div>
+                      <div>
+                        <div className="font-rajdhani text-xs uppercase tracking-widest text-[var(--muted-foreground)] mb-1">Монеты 🪙</div>
+                        <input type="number" value={creditForm.coins} onChange={e => setCreditForm(f => f && ({ ...f, coins: e.target.value }))}
+                          className="w-full bg-[rgba(0,255,229,0.04)] border border-[rgba(0,255,229,0.2)] rounded-sm px-4 py-2 font-rajdhani text-sm neon-text-cyan focus:outline-none focus:border-[var(--neon-cyan)]" />
+                      </div>
+                      <div>
+                        <div className="font-rajdhani text-xs uppercase tracking-widest text-[var(--muted-foreground)] mb-1">Кристаллы 💎</div>
+                        <input type="number" value={creditForm.gems} onChange={e => setCreditForm(f => f && ({ ...f, gems: e.target.value }))}
+                          className="w-full bg-[rgba(0,255,229,0.04)] border border-[rgba(0,255,229,0.2)] rounded-sm px-4 py-2 font-rajdhani text-sm neon-text-cyan focus:outline-none focus:border-[var(--neon-cyan)]" />
+                      </div>
+                      <div className="flex gap-3">
+                        <button onClick={creditBalance} className="flex-1 btn-neon py-2.5 rounded-sm text-sm">✅ Начислить</button>
+                        <button onClick={() => setCreditForm(null)} className="px-4 py-2.5 rounded-sm border border-[rgba(255,255,255,0.1)] text-[var(--muted-foreground)] font-rajdhani text-sm hover:border-[rgba(255,255,255,0.3)] transition-all">Отмена</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
       </main>
 
       {/* Ticker */}

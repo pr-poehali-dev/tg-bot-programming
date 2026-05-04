@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS t_p46650649_tg_bot_programming.donations (
+  id SERIAL PRIMARY KEY,
+  username TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS t_p46650649_tg_bot_programming.player_balances (
+  id SERIAL PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  coins INTEGER NOT NULL DEFAULT 0,
+  gems INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
